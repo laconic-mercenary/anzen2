@@ -14,7 +14,9 @@ const captureCheckbox = document.getElementById('capture-checkbox');
 const streamer = document.getElementById('video-pane');
 
 let mediaStream;
-let socket = new WebSocket(`ws://${window.location.host}/ws/`);
+let socket;
+const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+socket = new WebSocket(`${protocol}${window.location.host}/ws/`);
 socket.binaryType = 'arraybuffer';
 socket.onopen = () => {
     console.log('WebSocket connection opened');
