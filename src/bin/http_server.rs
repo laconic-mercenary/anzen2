@@ -36,22 +36,22 @@ async fn main() -> std::io::Result<()> {
 
 async fn get_monitor_js() -> HttpResponse {
     let html = fs::read_to_string("static/js/monitor.js").unwrap();
-    HttpResponse::Ok().body(html)
+    HttpResponse::Ok().content_type("application/javascript; charset=utf-8").body(html)
 }
 
 async fn get_monitor_page() -> HttpResponse {
     let html = fs::read_to_string("static/monitor.html").unwrap();
-    HttpResponse::Ok().body(html)
+    HttpResponse::Ok().content_type("text/html; charset=utf-8").body(html)
 }
 
 async fn get_device_js() -> HttpResponse {
     let html = fs::read_to_string("static/js/device.js").unwrap();
-    HttpResponse::Ok().body(html)
+    HttpResponse::Ok().content_type("application/javascript; charset=utf-8").body(html)
 }
 
 async fn get_device_page() -> HttpResponse {
     let html = fs::read_to_string("static/device.html").unwrap();
-    HttpResponse::Ok().body(html)
+    HttpResponse::Ok().content_type("text/html; charset=utf-8").body(html)
 }
 
 async fn start_monitor_websocket(

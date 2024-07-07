@@ -6,7 +6,7 @@ const connectionStreamType = 129;
 const streamer = document.getElementById('video-pane');
 
 let mediaStream;
-let socket = new WebSocket('ws://localhost:8080/ws/');
+let socket = new WebSocket(`ws://${window.location.host}/ws/`);
 socket.binaryType = 'arraybuffer';
 
 socket.onmessage = (event) => {
