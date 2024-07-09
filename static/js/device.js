@@ -1,54 +1,47 @@
 if ('ImageCapture' in window) { 
     console.log('ImageCapture is supported!');
 } else {
-    console.log('ImageCapture is not supported!');
+    console.error('ImageCapture is not supported!');
 }
 
 const streamerId = Math.floor(Math.random() * 1000000);
 const videoStreamType = 128;
 const connectionStreamType = 129;
-
 const videoStream = document.getElementById('video-stream');
 const deviceSelect = document.getElementById('device-select');
 const captureCheckbox = document.getElementById('capture-checkbox');
-const streamer = document.getElementById('video-pane');
+const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+const sendIntervalMs = 250;
+const reconnectIntervalMs = 15 * 1000;
+const txType = "arraybuffer";
+const jpegQuality = 0.8;
 
 let mediaStream;
 let socket;
-const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-socket = new WebSocket(`${protocol}${window.location.host}/ws/`);
-socket.binaryType = 'arraybuffer';
-socket.onopen = () => {
-    console.log('WebSocket connection opened');
-};
-socket.onclose = () => { 
-    console.log('WebSocket connection closed');
+let socketReconnectHandle;
+
+function connectSocket() {
+    console.log('connectSocket');
+    socket = new WebSocket(`${protocol}${window.location.host}/ws/`);
+    socket.binaryType = txType;
+    socket.onopen = () => {
+        console.log('socket.onopen');
+        clearInterval(socketReconnectHandle);
+    };
+    socket.onclose = () => { 
+        console.log('socket.onclose');
+        clearInterval(socketReconnectHandle);
+        socketReconnectHandle = setTimeout(connectSocket, reconnectIntervalMs);
+    };
+    socket.onerror = (error) => {
+        console.log('socket.onerror');
+        console.error(error);
+        closeSocket();
+    };
 }
 
-// Get available camera devices
-navigator.mediaDevices.enumerateDevices()
-    .then(devices => {
-        devices.forEach(device => {
-            if (device.kind === 'videoinput') {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.text = device.label || `Camera ${deviceSelect.options.length + 1}`;
-                deviceSelect.add(option);
-            }
-        });
-    })
-    .catch(error => console.error('Error enumerating devices:', error));
-
-// Start/stop video capture
-captureCheckbox.addEventListener('change', () => {
-    if (captureCheckbox.checked) {
-        startCapture();
-    } else {
-        stopCapture();
-    }
-});
-
 function startCapture() {
+    console.log('startCapture');
     const deviceId = deviceSelect.value;
     const constraints = { video: { deviceId: deviceId } };
 
@@ -61,13 +54,11 @@ function startCapture() {
             const track = stream.getVideoTracks()[0];
             const imageCapture = new ImageCapture(track);
 
-            // throttle to 250ms
             let lastSentTime = 0;
-            const sendDelay = 250;
 
             const sendFrame = () => {
                 const now = Date.now();
-                if (now - lastSentTime >= sendDelay) {
+                if (now - lastSentTime >= sendIntervalMs) {
                     lastSentTime = now;
                     imageCapture
                         .grabFrame()
@@ -90,9 +81,9 @@ function startCapture() {
                                         }));
                                     }
                                 } else {
-                                    console.log("socket not initialized")
+                                    console.error("socket not initialized")
                                 }
-                            }, 'image/jpeg', 0.8);
+                            }, 'image/jpeg', jpegQuality);
                         })
                         .catch(error => console.error('Error grabbing frame:', error));
                 }
@@ -105,9 +96,51 @@ function startCapture() {
 }
 
 function stopCapture() {
+    console.log("stopCapture");
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
         videoStream.srcObject = null;
     }
 }
+
+function closeSocket() {
+    console.log("closeSocket");
+    if (socket) {
+        socket.close();
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.onopen = null;
+        socket = null;
+    }
+}
+
+
+// Get available camera devices
+navigator.mediaDevices.enumerateDevices()
+    .then(devices => {
+        devices.forEach(device => {
+            if (device.kind === 'videoinput') {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${deviceSelect.options.length + 1}`;
+                deviceSelect.add(option);
+            }
+        });
+    })
+    .catch(error => console.error('Error enumerating devices:', error));
+
+// Start/stop video capture
+captureCheckbox.addEventListener('change', () => {
+    console.log('captureCheckbox.change');
+    if (captureCheckbox.checked) {
+        startCapture();
+    } else {
+        stopCapture();
+    }
+});
+
+window.onload = () => {
+    console.log('window.onload');
+    connectSocket();
+};

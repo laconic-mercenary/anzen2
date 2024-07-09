@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-use actix::{Addr, AsyncContext, Message, Recipient};
-use bytes::Bytes;
+use actix::{Message, Recipient};
 
 use crate::time;
 
@@ -12,6 +11,10 @@ pub struct StreamMessage(pub u64, pub String);
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
 pub struct AddStreamer(pub u64, pub Recipient<StreamMessage>);
+
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct StreamEnded();
 
 #[derive(Debug, Clone)]
 pub struct StreamServer {
@@ -34,8 +37,6 @@ impl actix::Handler<AddStreamer> for StreamServer {
     type Result = ();
 
     fn handle(&mut self, msg: AddStreamer, _ctx: &mut Self::Context) -> Self::Result {
-        // ADD-STREAMER-2
-        // Received a new streamer event from the session, add them to the streamers list
         let id = msg.0;
         let recipient = msg.1;
         let recipient_hash = {
@@ -53,15 +54,22 @@ impl actix::Handler<AddStreamer> for StreamServer {
     }
 }
 
+impl actix::Handler<StreamEnded> for StreamServer {
+    type Result = ();
+
+    fn handle(&mut self, _msg: StreamEnded, _ctx: &mut Self::Context) -> Self::Result {
+        log::info!("stream ended, removing unconnected streamers...");
+        self.streamers.retain(|_, streamer| streamer.connected());
+    }
+}
+
 impl actix::Handler<StreamMessage> for StreamServer {
     type Result = ();
 
     fn handle(&mut self, msg: StreamMessage, _ctx: &mut Self::Context) -> Self::Result {
-        // STREAM-MESSAGE-2
         // Received a new stream message from the session, send it to all streamers
         log::debug!("sending data to stream sessions, total sessions: {}", self.streamers.len());
         let now_ts = time::current_ts_millis();
-        let mut to_remove = Vec::<u64>::new();
         for (key, streamer) in self.streamers.iter_mut() {
             if streamer.connected() {
                 let recipient_hash = {
@@ -83,13 +91,11 @@ impl actix::Handler<StreamMessage> for StreamServer {
                     }
                 }
             } else {
-                log::warn!("streamer not connected: {} - will remove", key);
-                to_remove.push(key.clone());
+                log::warn!("streamer not connected: {}", key);
             }
         }
-        for id in to_remove {
-            self.streamers.remove(&id);
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!("send complete in {} ms", time::current_ts_millis() - now_ts);
         }
-        log::debug!("send complete in {} ms", time::current_ts_millis() - now_ts);
     }
 }

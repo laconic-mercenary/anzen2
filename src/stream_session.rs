@@ -3,7 +3,7 @@ use actix::{Addr, Handler, StreamHandler};
 use actix_web_actors::ws;
 use actix::AsyncContext;
 
-use crate::{message_types::{DataFrame, CONN_FRAME_TYPE, VIDEO_FRAME_TYPE}, stream_server::{AddStreamer, StreamMessage, StreamServer}};
+use crate::{message_types::{DataFrame, CONN_FRAME_TYPE, VIDEO_FRAME_TYPE}, stream_server::{AddStreamer, StreamMessage, StreamServer, StreamEnded}};
 
 pub struct StreamSession {
     server: Addr<StreamServer>
@@ -19,11 +19,12 @@ impl actix::Actor for StreamSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        log::info!("StreamSession started");
+        log::info!("websocket session started");
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        log::info!("StreamSession stopped");
+        log::info!("websocket session stopped");
+        self.server.do_send(StreamEnded());
     }
 }
 
@@ -36,8 +37,7 @@ impl Handler<StreamMessage> for StreamSession {
         let image_data = msg.1;
         let frame = DataFrame::new(VIDEO_FRAME_TYPE, stream_id, image_data);
         let text = serde_json::to_string(&frame).unwrap();
-        ctx.text(text)
-        // ctx.binary(msg.0);
+        ctx.text(text) // this is the actual websocket object
     }
 }
 
@@ -91,7 +91,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
                 log::error!("Protocol Error: {:?}", err);
             },
             _ => {
-                log::warn!("[StreamSession] stream message unknown");
+                log::warn!("stream message unknown");
             }
         }
     }
