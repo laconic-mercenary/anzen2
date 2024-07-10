@@ -88,8 +88,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
                 log::debug!("stream message continuation");
             },
             Err(err) => {
-                log::error!("Protocol Error: {:?}", err);
-            },
+                log::error!("Protocol Error: {:?} - {}", err, err.to_string());
+            }
             _ => {
                 log::warn!("stream message unknown");
             }

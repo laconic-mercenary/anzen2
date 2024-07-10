@@ -10,6 +10,7 @@ const ENV_ALLOWED_CIDR: &str = "ALLOWED_CIDR";
 const ANY_CIDR: &str = "*";
 const CONTENT_TYPE_JS: &str = "application/javascript; charset=utf-8";
 const CONTENT_TYPE_HTML: &str = "text/html; charset=utf-8";
+const PAYLOAD_SIZE : usize = 5 * 1024 * 1024; // 5MB payload buffer size
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -23,7 +24,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(stream_server.clone()))
-            .app_data(web::PayloadConfig::default().limit(usize::MAX))
+            .app_data(web::PayloadConfig::new(PAYLOAD_SIZE))
             .service(web::resource("/device").route(web::get().to(get_device_page)))
             .service(web::resource("/monitor").route(web::get().to(get_monitor_page)))
             .service(web::resource("/js/monitor.js").route(web::get().to(get_monitor_js)))
