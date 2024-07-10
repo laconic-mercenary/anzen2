@@ -2,7 +2,6 @@
 const streamerId = Math.floor(Math.random() * 1000000);
 const videoStreamType = 128;
 const connectionStreamType = 129;
-const streamer = document.getElementById('video-pane');
 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const reconnectIntervalMs = 30 * 1000;
 const streamIdRegex = /^[\w-]{1,50}$/;
@@ -22,7 +21,6 @@ function closeSocket() {
         socket.onclose = null;
         socket.onerror = null;
         socket = null;
-        streamer.src = null;
     }
 }
 
