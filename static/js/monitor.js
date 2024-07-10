@@ -5,6 +5,9 @@ const connectionStreamType = 129;
 const streamer = document.getElementById('video-pane');
 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const reconnectIntervalMs = 30 * 1000;
+const streamIdRegex = /^[\w-]{1,50}$/;
+const imgTagPrefix = "anzen-video";
+const imgTagClass = "anzen-video-img";
 
 let mediaStream;
 let socket;
@@ -28,8 +31,14 @@ function socketOnMessage(event) {
     let data = JSON.parse(event.data);
     let streamId = data.stream_id;
     let imageFrame = data.data;
-    console.log("image rx: " + imageFrame.length);
-    streamer.src = imageFrame;
+    if (!isValidStreamId(streamId)) {
+        console.error("invalid stream id: " + streamId);
+        return;
+    }
+    let img = getTargetImgTag(streamId);
+    if (img) {
+        img.src = imageFrame;
+    }
 }
 
 function socketOnOpen() {
@@ -41,6 +50,32 @@ function socketOnOpen() {
         data: "connect"
     };
     socket.send(JSON.stringify(connect));
+}
+
+function isValidStreamId(streamId) {
+    return streamIdRegex.test(streamId);
+}
+
+function getTargetImgTag(streamId) {
+    let imgTags = document.querySelectorAll(`img.${imgTagClass}`);
+    if (imgTags.length > 10) {
+        console.error("reached limit of number of video streams");
+        return null;
+    }   
+    let id = imgTagPrefix + "-" + streamId;
+    let img = document.getElementById(id);
+    if (!img) {
+        br = document.createElement("br");
+        img = document.createElement("img");
+        img.id = id;
+        img.classList.add(imgTagClass);
+        img.style.width = "75%";
+        img.style.height = "75%";
+        img.style.objectFit = "contain";
+        document.body.appendChild(br);
+        document.body.appendChild(img);
+    } 
+    return img
 }
 
 function socketOnClose() {

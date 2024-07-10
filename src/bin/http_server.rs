@@ -8,6 +8,8 @@ use std::{env::set_var, fs};
 
 const ENV_ALLOWED_CIDR: &str = "ALLOWED_CIDR";
 const ANY_CIDR: &str = "*";
+const CONTENT_TYPE_JS: &str = "application/javascript; charset=utf-8";
+const CONTENT_TYPE_HTML: &str = "text/html; charset=utf-8";
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -34,24 +36,29 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
+
 async fn get_monitor_js() -> HttpResponse {
     let html = fs::read_to_string("static/js/monitor.js").unwrap();
-    HttpResponse::Ok().content_type("application/javascript; charset=utf-8").body(html)
+    HttpResponse::Ok().content_type(CONTENT_TYPE_JS).body(html)
 }
 
 async fn get_monitor_page() -> HttpResponse {
     let html = fs::read_to_string("static/monitor.html").unwrap();
-    HttpResponse::Ok().content_type("text/html; charset=utf-8").body(html)
+    HttpResponse::Ok()
+        .content_type(CONTENT_TYPE_HTML)
+        .body(html)
 }
 
 async fn get_device_js() -> HttpResponse {
     let html = fs::read_to_string("static/js/device.js").unwrap();
-    HttpResponse::Ok().content_type("application/javascript; charset=utf-8").body(html)
+    HttpResponse::Ok().content_type(CONTENT_TYPE_JS).body(html)
 }
 
 async fn get_device_page() -> HttpResponse {
     let html = fs::read_to_string("static/device.html").unwrap();
-    HttpResponse::Ok().content_type("text/html; charset=utf-8").body(html)
+    HttpResponse::Ok()
+        .content_type(CONTENT_TYPE_HTML)
+        .body(html)
 }
 
 async fn start_monitor_websocket(
