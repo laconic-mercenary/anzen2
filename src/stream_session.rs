@@ -44,7 +44,7 @@ impl Handler<StreamMessage> for StreamSession {
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
-            Ok(ws::Message::Binary(msg)) => {
+            Ok(ws::Message::Binary(_msg)) => {
                 log::warn!("[StreamSession] stream message binary");
             },
             Ok(ws::Message::Text(msg)) => {
