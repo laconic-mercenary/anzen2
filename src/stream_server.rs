@@ -49,7 +49,6 @@ impl actix::Handler<AddStreamer> for StreamServer {
             hasher.finish()
         };
         log::info!("adding streamer (id: {}, recipient hash: {:?})", id, recipient_hash);
-
         self.streamers.insert(id, recipient);
     }
 }
@@ -67,7 +66,9 @@ impl actix::Handler<StreamMessage> for StreamServer {
     type Result = ();
 
     fn handle(&mut self, msg: StreamMessage, _ctx: &mut Self::Context) -> Self::Result {
-        // Received a new stream message from the session, send it to all streamers
+        // This is step 2 of the 3 steps we perform when we receive an image from 
+        // a device client. Here we are iterating through our monitor clients and sending
+        // the image to all of them. Remember - do not confuse device clients and monitor clients.
         log::debug!("sending data to stream sessions, total sessions: {}", self.streamers.len());
         let now_ts = time::current_ts_millis();
         for (key, streamer) in self.streamers.iter_mut() {

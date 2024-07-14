@@ -2,7 +2,7 @@
 use actix::{Addr, Actor};
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
-use anzen2::{stream_server::StreamServer, stream_session::StreamSession, time};
+use anzen2::{config, stream_server::StreamServer, stream_session::StreamSession};
 
 use std::fs;
 
@@ -19,7 +19,13 @@ async fn main() -> std::io::Result<()> {
     log::info!("starting server...");
 
     let stream_server = StreamServer::new().start();
+    
     let workers_ct = num_cpus::get() * 2;
+    
+    let mut bind_addr = "127.0.0.1:8080".to_string();
+    if !config::bind_localhost_addr() {
+        bind_addr = "0.0.0.0:8080".to_string();
+    }
 
     HttpServer::new(move || {
         App::new()
@@ -31,7 +37,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("/js/device.js").route(web::get().to(get_device_js)))
             .route("/ws/", web::get().to(start_monitor_websocket))
     })
-    .bind("0.0.0.0:8080")?
+    .bind(bind_addr)?
     .workers(workers_ct)
     .run()
     .await
@@ -72,8 +78,8 @@ async fn start_monitor_websocket(
 ) -> Result<HttpResponse, Error> {
     log::trace!("start_monitor_websocket");
     let conn_info = req.connection_info();
-    let remote_addr = req
-        .headers()
+    let headers = req.headers();
+    let remote_addr = headers
         .get(PROXY_FWD_HEADER)
         .and_then(|x| x.to_str().ok())
         .unwrap_or_else(|| conn_info.peer_addr().unwrap());

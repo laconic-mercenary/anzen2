@@ -10,6 +10,7 @@ const connectionStreamType = 129;
 const videoStream = document.getElementById('video-stream');
 const deviceSelect = document.getElementById('device-select');
 const captureCheckbox = document.getElementById('capture-checkbox');
+const streamerIdLabel = document.getElementById('streamer-id');
 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const sendIntervalMs = 250;
 const reconnectIntervalMs = 15 * 1000;
@@ -156,5 +157,6 @@ window.ononline = (event) => {
 
 window.onload = () => {
     console.log('window.onload');
+    streamerIdLabel.textContent = streamerId;
     connectSocket();
 };

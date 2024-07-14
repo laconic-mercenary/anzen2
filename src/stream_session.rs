@@ -19,6 +19,9 @@ impl actix::Actor for StreamSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
+        // this will fire when a client connects to our server using 
+        // websocket protocol. Note that this fires AFTER the 
+        // start_websocket_monitor callback found in the http_server.rs
         log::info!("websocket session started");
     }
 
@@ -32,6 +35,10 @@ impl Handler<StreamMessage> for StreamSession {
     type Result = ();
 
     fn handle(&mut self, msg: StreamMessage, ctx: &mut Self::Context) -> Self::Result {
+        // This is STEP 3 of the steps that happen when we receive an image from the device.
+        // We require the session because it has access to the context (ctx) - which you can 
+        // consider to be the actual push websocket. Previously the StreamMessage came from 
+        // the stream_server.rs.
         //log::debug!("sending data to client browser");
         let stream_id = msg.0;
         let image_data = msg.1;
@@ -55,6 +62,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
                     Ok(frame) => {
                         let stream_type = frame.stream_type();
                         if stream_type == VIDEO_FRAME_TYPE {
+                            // We received image data from a device client.
+                            // There are 3 steps in the server-side to execute
+                            // when we receive an image from the device. This is step 1.
+                            // In this first step we post a message to the stream_server.rs
+                            // because it keeps a list of our connected monitor clients
+                            // that are interested in receiving the images (images from the device clients)
                             let stream_id = frame.stream_id();
                             let data = frame.data;
                             log::debug!("received video frame stream_id: {}, datalen: {}", stream_id, data.len());
@@ -64,7 +77,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
                             }
                         } else if stream_type == CONN_FRAME_TYPE {
                             let stream_id = frame.stream_id();
-                            log::info!("received connection frame, stream_id: {}", stream_id);
+                            log::info!("received connection from streamer, streamer id is {}", stream_id);
                             let add_streamer = AddStreamer(stream_id, recipient);
                             if let Err(err) = self.server.try_send(add_streamer) {
                                 log::error!("[StreamSession] stream message text error {}", err);
