@@ -1,6 +1,5 @@
 
 const streamerId = Math.floor(Math.random() * 1000000);
-const videoStreamType = 128;
 const connectionStreamType = 129;
 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const reconnectIntervalMs = 30 * 1000;
@@ -43,9 +42,9 @@ function socketOnOpen() {
     console.log("socketOnOpen");
     clearInterval(connectSocketInterval);
     const connect = {
-        stream_id: streamerId,
+        sender_id: streamerId,
         stream_type: connectionStreamType,
-        data: "connect"
+        data: "connectStream"
     };
     socket.send(JSON.stringify(connect));
 }

@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 pub const VIDEO_FRAME_TYPE: u8 = 128;
-pub const CONN_FRAME_TYPE: u8 = 129;
+pub const CONN_STREAM_FRAME_TYPE: u8 = 129;
+pub const CONN_DEVICE_FRAME_TYPE: u8 = 130;
 
 #[derive(Serialize, Deserialize)]
 pub struct DataFrame {
     pub stream_type: u8,
-    pub stream_id: u64,
+    pub sender_id: u64,
     pub data: String,
 }
 
@@ -14,15 +15,15 @@ impl DataFrame {
     pub fn new_empty() -> Self {
         Self {
             stream_type: 0,
-            stream_id: 0,
+            sender_id: 0,
             data: String::new()
         }
     }
 
-    pub fn new(stream_type: u8, stream_id: u64, data: String) -> Self {
+    pub fn new(stream_type: u8, sender_id: u64, data: String) -> Self {
         Self {
             stream_type,
-            stream_id,
+            sender_id,
             data
         }
     }
@@ -33,7 +34,7 @@ impl DataFrame {
         self.stream_type
     }
 
-    pub fn stream_id(&self) -> u64 {
-        self.stream_id
+    pub fn sender_id(&self) -> u64 {
+        self.sender_id
     }
 }

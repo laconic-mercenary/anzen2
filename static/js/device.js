@@ -4,13 +4,13 @@ if ('ImageCapture' in window) {
     console.error('ImageCapture is not supported!');
 }
 
-const streamerId = Math.floor(Math.random() * 1000000);
+const deviceId = Math.floor(Math.random() * 1000000);
 const videoStreamType = 128;
-const connectionStreamType = 129;
+const connectionDeviceType = 130;
 const videoStream = document.getElementById('video-stream');
 const deviceSelect = document.getElementById('device-select');
 const captureCheckbox = document.getElementById('capture-checkbox');
-const streamerIdLabel = document.getElementById('streamer-id');
+const deviceIdLabel = document.getElementById('device-id');
 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const sendIntervalMs = 250;
 const reconnectIntervalMs = 15 * 1000;
@@ -29,6 +29,12 @@ function connectSocket() {
     socket.onopen = () => {
         console.log('socket.onopen');
         clearInterval(socketReconnectHandle);
+        const connect = {
+            sender_id: deviceId,
+            stream_type: connectionDeviceType,
+            data: "connectDevice"
+        };
+        socket.send(JSON.stringify(connect));
     };
     socket.onclose = () => { 
         console.log('socket.onclose');
@@ -44,8 +50,8 @@ function connectSocket() {
 
 function startCapture() {
     console.log('startCapture');
-    const deviceId = deviceSelect.value;
-    const constraints = { video: { deviceId: deviceId } };
+    const cameraId = deviceSelect.value;
+    const constraints = { video: { deviceId: cameraId } };
 
     navigator.mediaDevices
         .getUserMedia(constraints)
@@ -78,7 +84,7 @@ function startCapture() {
                                         const base64data = reader.result;
                                         socket.send(JSON.stringify({
                                             stream_type: videoStreamType,
-                                            stream_id: streamerId,
+                                            sender_id: deviceId,
                                             data: base64data
                                         }));
                                     }
@@ -157,6 +163,6 @@ window.ononline = (event) => {
 
 window.onload = () => {
     console.log('window.onload');
-    streamerIdLabel.textContent = streamerId;
+    deviceIdLabel.textContent = deviceId;
     connectSocket();
 };

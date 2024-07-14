@@ -3,7 +3,7 @@ use actix::{Addr, Handler, StreamHandler};
 use actix_web_actors::ws;
 use actix::AsyncContext;
 
-use crate::{message_types::{DataFrame, CONN_FRAME_TYPE, VIDEO_FRAME_TYPE}, stream_server::{AddStreamer, StreamMessage, StreamServer, StreamEnded}};
+use crate::{message_types::{DataFrame, CONN_DEVICE_FRAME_TYPE, CONN_STREAM_FRAME_TYPE, VIDEO_FRAME_TYPE}, stream_server::{AddStreamer, StreamEnded, StreamMessage, StreamServer}};
 
 pub struct StreamSession {
     server: Addr<StreamServer>
@@ -68,20 +68,26 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
                             // In this first step we post a message to the stream_server.rs
                             // because it keeps a list of our connected monitor clients
                             // that are interested in receiving the images (images from the device clients)
-                            let stream_id = frame.stream_id();
+                            let stream_id = frame.sender_id();
                             let data = frame.data;
                             log::debug!("received video frame stream_id: {}, datalen: {}", stream_id, data.len());
                             let stream_message = StreamMessage(stream_id, data);
                             if let Err(err) = self.server.try_send(stream_message) {
                                 log::error!("[StreamSession] stream message text error {:?}", err);
                             }
-                        } else if stream_type == CONN_FRAME_TYPE {
-                            let stream_id = frame.stream_id();
+                        } else if stream_type == CONN_STREAM_FRAME_TYPE {
+                            let stream_id = frame.sender_id();
                             log::info!("received connection from streamer, streamer id is {}", stream_id);
                             let add_streamer = AddStreamer(stream_id, recipient);
                             if let Err(err) = self.server.try_send(add_streamer) {
                                 log::error!("[StreamSession] stream message text error {}", err);
                             }
+                        } else if stream_type == CONN_DEVICE_FRAME_TYPE {
+                            // At the moment there is no need to keep track of devices
+                            // connected, but a helpful log is at least a good idea
+                            let device_id = frame.sender_id();
+                            log::info!("received connection from device, id is {}", device_id);
+                            // no need for message sending (for now)
                         } else {
                             log::warn!("unknown stream type {}", stream_type);
                         }
