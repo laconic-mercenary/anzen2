@@ -98,6 +98,14 @@ function connectSocket() {
     socket.onerror = socketOnError;
 }
 
+window.onoffline = (event) => {
+    console.log("network lost");
+};
+
+window.ononline = (event) => {
+    console.log("network available");
+};
+
 window.onload = () => {
     console.log('window.onload');
     connectSocket();

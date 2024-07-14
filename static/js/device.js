@@ -13,12 +13,13 @@ const captureCheckbox = document.getElementById('capture-checkbox');
 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const sendIntervalMs = 250;
 const reconnectIntervalMs = 15 * 1000;
-const txType = "arraybuffer";
+const txType = 'arraybuffer';
 const jpegQuality = 0.8;
 
 let mediaStream;
 let socket;
 let socketReconnectHandle;
+let animateFrameHandle;
 
 function connectSocket() {
     console.log('connectSocket');
@@ -81,14 +82,15 @@ function startCapture() {
                                         }));
                                     }
                                 } else {
-                                    console.error("socket not initialized")
+                                    console.error("socket not initialized");
+                                    connectSocket();
                                 }
                             }, 'image/jpeg', jpegQuality);
                         })
                         .catch(error => console.error('Error grabbing frame:', error));
                 }
 
-                requestAnimationFrame(sendFrame);
+                animateFrameHandle = requestAnimationFrame(sendFrame);
             };
             sendFrame();
         })
@@ -101,6 +103,10 @@ function stopCapture() {
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
         videoStream.srcObject = null;
+    }
+    if (animateFrameHandle) {
+        cancelAnimationFrame(animateFrameHandle);
+        animateFrameHandle = null;
     }
 }
 
@@ -139,6 +145,14 @@ captureCheckbox.addEventListener('change', () => {
         stopCapture();
     }
 });
+  
+window.onoffline = (event) => {
+    console.log("network lost");
+};
+
+window.ononline = (event) => {
+    console.log("network available");
+};
 
 window.onload = () => {
     console.log('window.onload');

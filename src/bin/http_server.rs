@@ -4,7 +4,7 @@ use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use anzen2::{stream_server::StreamServer, stream_session::StreamSession, time};
 
-use std::{env::set_var, fs};
+use std::fs;
 
 const ENV_ALLOWED_CIDR: &str = "ALLOWED_CIDR";
 const ANY_CIDR: &str = "*";
@@ -38,11 +38,13 @@ async fn main() -> std::io::Result<()> {
 }
 
 async fn get_monitor_js() -> HttpResponse {
+    log::trace!("get_monitor_js");
     let html = fs::read_to_string("static/js/monitor.js").unwrap();
     HttpResponse::Ok().content_type(CONTENT_TYPE_JS).body(html)
 }
 
 async fn get_monitor_page() -> HttpResponse {
+    log::trace!("get_monitor_page");
     let html = fs::read_to_string("static/monitor.html").unwrap();
     HttpResponse::Ok()
         .content_type(CONTENT_TYPE_HTML)
@@ -50,11 +52,13 @@ async fn get_monitor_page() -> HttpResponse {
 }
 
 async fn get_device_js() -> HttpResponse {
+    log::trace!("get_device_js");
     let html = fs::read_to_string("static/js/device.js").unwrap();
     HttpResponse::Ok().content_type(CONTENT_TYPE_JS).body(html)
 }
 
 async fn get_device_page() -> HttpResponse {
+    log::trace!("get_device_page");
     let html = fs::read_to_string("static/device.html").unwrap();
     HttpResponse::Ok()
         .content_type(CONTENT_TYPE_HTML)
@@ -95,7 +99,7 @@ fn is_ip_in_cidr(ip: std::net::IpAddr) -> bool {
     if cidr_str == ANY_CIDR {
         true
     } else {
-        let cidr: ipnetwork::IpNetwork = cidr_str.parse().expect("Failed to parse CIDR");
+        let cidr: ipnetwork::IpNetwork = cidr_str.parse().unwrap();
         cidr.contains(ip)
     }
 }
