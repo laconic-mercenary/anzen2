@@ -28,14 +28,15 @@ function socketOnMessage(event) {
     let data = JSON.parse(event.data);
     let senderId = data.sender_id;
     let imageFrame = data.data;
+    assertIsSet(senderId, "senderId");
+    assertIsSet(imageFrame, "imageFrame");
     if (!isValidSenderId(senderId)) {
         console.error("invalid sender id: " + senderId);
         return;
     }
     let img = getTargetImgTag(senderId);
-    if (img) {
-        img.src = imageFrame;
-    }
+    assertIsSet(img, "img");
+    img.src = imageFrame;
 }
 
 function socketOnOpen() {
@@ -51,6 +52,13 @@ function socketOnOpen() {
 
 function isValidSenderId(senderId) {
     return senderIdRegex.test(senderId);
+}
+
+function assertIsSet(arg, paramName) {
+    if (arg === null || arg === undefined) {
+        console.error(`Argument ${paramName} is null or undefined`)
+        throw new Error(`Argument ${paramName} is null or undefined`)    
+    }
 }
 
 function getTargetImgTag(senderId) {

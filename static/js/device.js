@@ -15,6 +15,7 @@ const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const sendIntervalMs = 250;
 const reconnectIntervalMs = 15 * 1000;
 const txType = 'arraybuffer';
+const videoDeviceType = "videoinput";
 const jpegQuality = 0.8;
 
 let mediaStream;
@@ -133,7 +134,7 @@ function closeSocket() {
 navigator.mediaDevices.enumerateDevices()
     .then(devices => {
         devices.forEach(device => {
-            if (device.kind === 'videoinput') {
+            if (device.kind === videoDeviceType) {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
                 option.text = device.label || `Camera ${deviceSelect.options.length + 1}`;
