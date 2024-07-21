@@ -18,7 +18,7 @@ const txType = 'arraybuffer';
 const videoDeviceType = "videoinput";
 const jpegQuality = 0.8;
 const minResolution = { width: 640, height: 480 };
-const idealResolution = { width: 1280, height: 720 };
+const idealResolution = { width: 800, height: 600 };
 const maxResolution = { width: 1920, height: 1080 };
 
 let mediaStream;

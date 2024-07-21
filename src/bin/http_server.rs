@@ -30,7 +30,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(stream_server.clone()))
-            .app_data(web::PayloadConfig::new(PAYLOAD_SIZE).limit(PAYLOAD_SIZE * 3))
+            .app_data(web::PayloadConfig::new(PAYLOAD_SIZE))
             .service(web::resource("/device").route(web::get().to(get_device_page)))
             .service(web::resource("/monitor").route(web::get().to(get_monitor_page)))
             .service(web::resource("/js/monitor.js").route(web::get().to(get_monitor_js)))
