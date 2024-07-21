@@ -17,6 +17,9 @@ const reconnectIntervalMs = 15 * 1000;
 const txType = 'arraybuffer';
 const videoDeviceType = "videoinput";
 const jpegQuality = 0.8;
+const minResolution = { width: 640, height: 480 };
+const idealResolution = { width: 1280, height: 720 };
+const maxResolution = { width: 1920, height: 1080 };
 
 let mediaStream;
 let socket;
@@ -52,7 +55,14 @@ function connectSocket() {
 function startCapture() {
     console.log('startCapture');
     const cameraId = deviceSelect.value;
-    const constraints = { video: { deviceId: cameraId } };
+    
+    const constraints = { 
+        video: { 
+            deviceId: cameraId,
+            width: { min: minResolution.width, ideal: idealResolution.width, max: maxResolution.width },
+            height: { min: minResolution.height, ideal: idealResolution.height, max: maxResolution.height },
+        }
+    };
 
     navigator.mediaDevices
         .getUserMedia(constraints)
