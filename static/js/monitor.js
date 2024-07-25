@@ -34,9 +34,32 @@ function socketOnMessage(event) {
         console.error("invalid sender id: " + senderId);
         return;
     }
-    let img = getTargetImgTag(senderId);
-    assertIsSet(img, "img");
-    img.src = imageFrame;
+    //let img = getTargetImgTag(senderId);
+    //assertIsSet(img, "img");
+    //img.src = imageFrame;
+    const width = 640; 
+    const height = 480;
+    const canvas = getCanvas(senderId, height, width);
+    assertIsSet(canvas, "canvas");
+    const binaryString = atob(imageFrame);
+    const len = binaryString.length;
+    const byteArray = new Uint8Array(len);
+    
+    for (let i = 0; i < len; i++) {
+        byteArray[i] = binaryString.charCodeAt(i);
+    }
+
+    console.log("RX IMG, sevice ID:", senderId);
+    if (byteArray.length !== 4 * width * height) { // rgb (4)
+        console.error(`Incorrect data length. Expected ${4 * width * height}, got ${byteArray.length}`);
+        return;
+    }
+
+    const imageData = new ImageData(new Uint8ClampedArray(byteArray), width, height);
+
+    const ctx = canvas.getContext('2d');
+    assertIsSet(ctx, "ctx");
+    ctx.putImageData(imageData, 0, 0);    
 }
 
 function socketOnOpen() {
@@ -59,6 +82,20 @@ function assertIsSet(arg, paramName) {
         console.error(`Argument ${paramName} is null or undefined`)
         throw new Error(`Argument ${paramName} is null or undefined`)    
     }
+}
+
+function getCanvas(senderId, height, width) {
+    let canvas = document.getElementById(senderId);
+    if (!canvas) {
+        br = document.createElement("br");
+        canvas = document.createElement("canvas");
+        canvas.id = senderId;
+        canvas.width = width;
+        canvas.height = height;
+        document.body.appendChild(br);
+        document.body.appendChild(canvas);
+    }
+    return canvas;
 }
 
 function getTargetImgTag(senderId) {

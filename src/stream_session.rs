@@ -1,17 +1,24 @@
 
 use actix::{Addr, Handler, StreamHandler};
+use actix_http::ws::Item;
 use actix_web_actors::ws;
 use actix::AsyncContext;
 
-use crate::{message_types::{DataFrame, CONN_DEVICE_FRAME_TYPE, CONN_STREAM_FRAME_TYPE, VIDEO_FRAME_TYPE}, stream_server::{AddStreamer, StreamEnded, StreamMessage, StreamServer}};
+use crate::{images, message_types::{DataFrame, CONN_DEVICE_FRAME_TYPE, CONN_STREAM_FRAME_TYPE, VIDEO_FRAME_TYPE}, stream_server::{AddStreamer, DataMessage, StreamEnded, StreamMessage, StreamServer}};
 
 pub struct StreamSession {
-    server: Addr<StreamServer>
+    server: Addr<StreamServer>,
+    buffer: Vec<u8>,
+    is_fragmented: bool,
 }
 
 impl StreamSession {
     pub fn new(server: Addr<StreamServer>) -> Self {
-        Self { server }
+        Self { 
+            server,
+            buffer: Vec::<u8>::new(), 
+            is_fragmented: false
+        }
     }
 }
 
@@ -39,13 +46,36 @@ impl Handler<StreamMessage> for StreamSession {
         // We require the session because it has access to the context (ctx) - which you can 
         // consider to be the actual push websocket. Previously the StreamMessage came from 
         // the stream_server.rs.
-        //log::debug!("sending data to client browser");
+        log::debug!("sending data to client browser");
         let stream_id = msg.0;
         let image_data = msg.1;
         let frame = DataFrame::new(VIDEO_FRAME_TYPE, stream_id, image_data);
         let text = serde_json::to_string(&frame).unwrap();
         ctx.text(text) // this is the actual websocket object
     }
+}
+
+impl Handler<DataMessage> for StreamSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: DataMessage, ctx: &mut Self::Context) -> Self::Result {
+        // This is STEP 3 of the steps that happen when we receive an image from the device.
+        // We require the session because it has access to the context (ctx) - which you can
+        // consider to be the actual push websocket. Previously the StreamMessage came from
+        // the stream_server.rs.
+        log::debug!("sending data to client browser");
+        let sender_id = msg.0;
+        let image_data = msg.1;
+        let base64_encoded = base64::encode(&image_data);
+        let frame = DataFrame::new(VIDEO_FRAME_TYPE, sender_id, base64_encoded);
+        let text = serde_json::to_string(&frame).unwrap();
+        ctx.text(text) // this is the actual websocket object
+    }
+}
+
+fn jpeg_to_data_url(jpeg_bytes: Vec<u8>) -> String {
+    let base64_encoded = base64::encode(&jpeg_bytes);
+    format!("data:image/jpeg;base64,{}", base64_encoded)
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
@@ -61,21 +91,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
                 match result {
                     Ok(frame) => {
                         let stream_type = frame.stream_type();
-                        if stream_type == VIDEO_FRAME_TYPE {
-                            // We received image data from a device client.
-                            // There are 3 steps in the server-side to execute
-                            // when we receive an image from the device. This is step 1.
-                            // In this first step we post a message to the stream_server.rs
-                            // because it keeps a list of our connected monitor clients
-                            // that are interested in receiving the images (images from the device clients)
-                            let stream_id = frame.sender_id();
-                            let data = frame.data;
-                            log::debug!("received video frame stream_id: {}, datalen: {}", stream_id, data.len());
-                            let stream_message = StreamMessage(stream_id, data);
-                            if let Err(err) = self.server.try_send(stream_message) {
-                                log::error!("[StreamSession] stream message text error {:?}", err);
-                            }
-                        } else if stream_type == CONN_STREAM_FRAME_TYPE {
+                        if stream_type == CONN_STREAM_FRAME_TYPE {
                             let stream_id = frame.sender_id();
                             log::info!("received connection from streamer, streamer id is {}", stream_id);
                             let add_streamer = AddStreamer(stream_id, recipient);
@@ -103,7 +119,31 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
             Ok(ws::Message::Close(_msg)) => {
                 log::info!("stream message close");
             },
-            Ok(ws::Message::Continuation(_msg)) => {
+            Ok(ws::Message::Continuation(item)) => {
+                match item {
+                    Item::FirstBinary(bytes) | Item::FirstText(bytes) => {
+                        self.buffer.extend_from_slice(&bytes);
+                        self.is_fragmented = true;
+                    }
+                    Item::Continue(bytes) => {
+                        if self.is_fragmented {
+                            self.buffer.extend_from_slice(&bytes);
+                        }
+                    }
+                    Item::Last(bytes) => {
+                        if self.is_fragmented {
+                            self.buffer.extend_from_slice(&bytes);
+                            self.is_fragmented = false;
+                            let mut image_data = self.buffer.split_off(0);
+                            let sender_id_bytes = image_data.iter().rev().take(7).cloned().collect::<Vec<u8>>();
+                            let sender_id = bytes_to_integer(&sender_id_bytes);
+                            image_data.truncate(image_data.len() - 7);
+                            log::debug!("Sender ID: {:?}, Image data length: {}", sender_id, image_data.len());
+                            let data_msg = DataMessage(sender_id, image_data);
+                            self.server.do_send(data_msg);
+                        }
+                    }
+                }
                 log::debug!("stream message continuation");
             },
             Err(err) => {
@@ -113,5 +153,51 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
                 log::warn!("stream message unknown");
             }
         }
+    }
+}
+fn bytes_to_integer(bytes: &[u8]) -> u64 {
+    let s = bytes.iter().map(|&b| (b + b'0') as char).rev().collect::<String>();
+    s.parse::<u64>().unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bytes_to_integer_single_digit() {
+        let bytes = vec![5];
+        assert_eq!(bytes_to_integer(&bytes), 5);
+    }
+
+    #[test]
+    fn test_bytes_to_integer_multiple_digits() {
+        let bytes = vec![1, 2, 3, 4, 5];
+        assert_eq!(bytes_to_integer(&bytes), 12345);
+    }
+
+    #[test]
+    fn test_bytes_to_integer_zero() {
+        let bytes = vec![0];
+        assert_eq!(bytes_to_integer(&bytes), 0);
+    }
+
+    #[test]
+    fn test_bytes_to_integer_large_number() {
+        let bytes = vec![9, 9, 9, 9, 9, 9, 9, 9, 9];
+        assert_eq!(bytes_to_integer(&bytes), 999999999);
+    }
+
+    #[test]
+    #[should_panic(expected = "ParseIntError")]
+    fn test_bytes_to_integer_invalid_input() {
+        let bytes = vec![255]; // This will result in an invalid character
+        bytes_to_integer(&bytes);
+    }
+
+    #[test]
+    fn test_bytes_to_integer_empty_input() {
+        let bytes: Vec<u8> = vec![];
+        assert_eq!(bytes_to_integer(&bytes), 0);
     }
 }

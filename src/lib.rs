@@ -3,6 +3,7 @@ pub mod message_types;
 pub mod stream_server;
 pub mod stream_session;
 pub mod time;
+pub mod images;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

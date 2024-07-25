@@ -12,7 +12,7 @@ pub fn bind_localhost_addr() -> bool {
             }
         }
     } else {
-        log::warn!("Warning: {} env var is not set, defaulting to true", ENV_BIND_LOCALHOST_ADDR);
+        log::warn!("{} env var is not set, defaulting to true", ENV_BIND_LOCALHOST_ADDR);
         true
     }
 }

@@ -10,7 +10,7 @@ const ENV_ALLOWED_CIDR: &str = "ALLOWED_CIDR";
 const ANY_CIDR: &str = "*";
 const CONTENT_TYPE_JS: &str = "application/javascript; charset=utf-8";
 const CONTENT_TYPE_HTML: &str = "text/html; charset=utf-8";
-const PAYLOAD_SIZE : usize = 10 * 1024 * 1024; // payload buffer size
+const PAYLOAD_SIZE : usize = 5 * 1024 * 1024; // payload buffer size
 const PROXY_FWD_HEADER: &str = "X-Forwarded-For";
 
 #[actix_web::main]
@@ -20,7 +20,7 @@ async fn main() -> std::io::Result<()> {
 
     let stream_server = StreamServer::new().start();
     
-    let workers_ct = num_cpus::get() * 2;
+    let workers_ct = num_cpus::get();
     
     let mut bind_addr = "127.0.0.1:8080".to_string();
     if !config::bind_localhost_addr() {
@@ -30,7 +30,6 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(stream_server.clone()))
-            .app_data(web::PayloadConfig::new(PAYLOAD_SIZE))
             .service(web::resource("/device").route(web::get().to(get_device_page)))
             .service(web::resource("/monitor").route(web::get().to(get_monitor_page)))
             .service(web::resource("/js/monitor.js").route(web::get().to(get_monitor_js)))
@@ -70,7 +69,7 @@ async fn get_device_page() -> HttpResponse {
         .content_type(CONTENT_TYPE_HTML)
         .body(html)
 }
-
+ 
 async fn start_monitor_websocket(
     req: HttpRequest,
     stream: web::Payload,
@@ -96,7 +95,10 @@ async fn start_monitor_websocket(
         req.uri().path(),
         remote_addr
     );
-    ws::start(stream_session, &req, stream)
+    //ws::start(stream_session, &req, stream)
+    ws::WsResponseBuilder::new(stream_session, &req, stream)
+        .frame_size(PAYLOAD_SIZE)
+        .start()
 }
 
 fn is_ip_in_cidr(ip: std::net::IpAddr) -> bool {

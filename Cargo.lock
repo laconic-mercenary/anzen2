@@ -295,10 +295,12 @@ name = "anzen2"
 version = "0.1.0"
 dependencies = [
  "actix",
+ "actix-http",
  "actix-web",
  "actix-web-actors",
  "base64 0.13.1",
  "bytes",
+ "derive_more",
  "env_logger",
  "ipnetwork",
  "log",

@@ -4,7 +4,7 @@ if ('ImageCapture' in window) {
     console.error('ImageCapture is not supported!');
 }
 
-const deviceId = Math.floor(Math.random() * 1000000);
+const deviceId = Math.floor(Math.random() * 9000000) + 1000000;
 const videoStreamType = 128;
 const connectionDeviceType = 130;
 const videoStream = document.getElementById('video-stream');
@@ -18,13 +18,72 @@ const txType = 'arraybuffer';
 const videoDeviceType = "videoinput";
 const jpegQuality = 0.8;
 const minResolution = { width: 640, height: 480 };
-const idealResolution = { width: 800, height: 600 };
-const maxResolution = { width: 1920, height: 1080 };
+const idealResolution = { width: 640, height: 480 };
+const maxResolution = { width: 1900, height: 1080 };
 
 let mediaStream;
 let socket;
 let socketReconnectHandle;
 let animateFrameHandle;
+
+function isPNG(imageByteArray) {
+    // Check if the array has at least 8 bytes (PNG signature length)
+    if (imageByteArray.length < 8) {
+        return false
+    }
+    
+    // PNG files start with the following 8 bytes:
+    // 137 80 78 71 13 10 26 10
+    const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10]
+    
+    for (let i = 0; i < 8; i++) {
+        if (imageByteArray[i] !== pngSignature[i]) {
+            return false
+        }
+    }
+    
+    return true
+}
+
+
+function isJPEG(imageByteArray) {
+    // Check if the first two bytes are the JPEG Start of Image (SOI) marker
+    if (imageByteArray.length < 2) {
+        return false
+    }
+    
+    // JPEG files start with the bytes 0xFF 0xD8
+    return imageByteArray[0] === 0xFF && imageByteArray[1] === 0xD8
+}
+
+
+function findAppSection(imageByteArray) {
+    const APP0Marker = 0xFFE0
+    const APP15Marker = 0xFFEF
+    let appSectionStart = -1
+    let appSectionLength = 0
+
+    for (let i = 0; i < imageByteArray.length - 1; i++) {
+        if (imageByteArray[i] === 0xFF && 
+            imageByteArray[i + 1] >= APP0Marker && 
+            imageByteArray[i + 1] <= APP15Marker) {
+            appSectionStart = i
+            // The length of the APP segment is stored in the next two bytes
+            appSectionLength = (imageByteArray[i + 2] << 8) | imageByteArray[i + 3]
+            
+            // Extract the APP section contents
+            const appSectionContents = imageByteArray.slice(appSectionStart, appSectionStart + appSectionLength + 2)
+            
+            return {
+                start: appSectionStart,
+                length: appSectionLength,
+                contents: appSectionContents
+            }
+        }
+    }
+
+    return null; // No APP section found
+}
 
 function connectSocket() {
     console.log('connectSocket');
@@ -87,23 +146,22 @@ function startCapture() {
                             canvas.height = imageBitmap.height;
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(imageBitmap, 0, 0);
-                            canvas.toBlob(blob => {
-                                if (socket) {
-                                    const reader = new FileReader();
-                                    reader.readAsDataURL(blob);
-                                    reader.onloadend = () => {
-                                        const base64data = reader.result;
-                                        socket.send(JSON.stringify({
-                                            stream_type: videoStreamType,
-                                            sender_id: deviceId,
-                                            data: base64data
-                                        }));
-                                    }
-                                } else {
-                                    console.error("socket not initialized");
-                                    connectSocket();
-                                }
-                            }, 'image/jpeg', jpegQuality);
+                            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                            const buffer = imageData.data.buffer;
+                            const byteArray = new Uint8Array(buffer);
+                            const deviceIdArray = Array.from(String(deviceId), Number)
+                            
+                            const combinedArray = new Uint8Array(byteArray.length + deviceIdArray.length);
+                            combinedArray.set(byteArray);
+                            combinedArray.set(deviceIdArray, byteArray.length);
+
+                            if (socket) {
+                                console.log("sending frame " + combinedArray.length);
+                                socket.send(combinedArray.buffer); // Send the modified ArrayBuffer through the WebSocket
+                            } else {
+                                console.error("socket not initialized");
+                                connectSocket();
+                            }
                         })
                         .catch(error => console.error('Error grabbing frame:', error));
                 }
