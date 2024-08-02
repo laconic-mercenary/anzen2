@@ -1,28 +1,29 @@
 
-use actix::{Addr, Handler, StreamHandler};
+use actix::{Addr, Handler, Recipient, StreamHandler};
 use actix_http::ws::Item;
 use actix_web_actors::ws;
 use actix::AsyncContext;
+use bytes::Bytes;
 
-use crate::{images, message_types::{DataFrame, CONN_DEVICE_FRAME_TYPE, CONN_STREAM_FRAME_TYPE, VIDEO_FRAME_TYPE}, stream_server::{AddStreamer, DataMessage, StreamEnded, StreamMessage, StreamServer}};
+use crate::{images, client_message::{ClientMessage, DEVICE_CONNECTION_TYPE, MONITOR_CONNECTION_TYPE, IMAGE_READY_TYPE}, stream_server::{AddMonitorClientEvent, ImageReadyEvent, VideoSessionEndedEvent, StreamServer}};
 
-pub struct StreamSession {
+pub struct VideoSession {
     server: Addr<StreamServer>,
     buffer: Vec<u8>,
-    is_fragmented: bool,
+    is_message_fragmented: bool,
 }
 
-impl StreamSession {
+impl VideoSession {
     pub fn new(server: Addr<StreamServer>) -> Self {
         Self { 
             server,
             buffer: Vec::<u8>::new(), 
-            is_fragmented: false
+            is_message_fragmented: false
         }
     }
 }
 
-impl actix::Actor for StreamSession {
+impl actix::Actor for VideoSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
@@ -34,31 +35,14 @@ impl actix::Actor for StreamSession {
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         log::info!("websocket session stopped");
-        self.server.do_send(StreamEnded());
+        self.server.do_send(VideoSessionEndedEvent());
     }
 }
 
-impl Handler<StreamMessage> for StreamSession {
+impl Handler<ImageReadyEvent> for VideoSession {
     type Result = ();
 
-    fn handle(&mut self, msg: StreamMessage, ctx: &mut Self::Context) -> Self::Result {
-        // This is STEP 3 of the steps that happen when we receive an image from the device.
-        // We require the session because it has access to the context (ctx) - which you can 
-        // consider to be the actual push websocket. Previously the StreamMessage came from 
-        // the stream_server.rs.
-        log::debug!("sending data to client browser");
-        let stream_id = msg.0;
-        let image_data = msg.1;
-        let frame = DataFrame::new(VIDEO_FRAME_TYPE, stream_id, image_data);
-        let text = serde_json::to_string(&frame).unwrap();
-        ctx.text(text) // this is the actual websocket object
-    }
-}
-
-impl Handler<DataMessage> for StreamSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: DataMessage, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ImageReadyEvent, ctx: &mut Self::Context) -> Self::Result {
         // This is STEP 3 of the steps that happen when we receive an image from the device.
         // We require the session because it has access to the context (ctx) - which you can
         // consider to be the actual push websocket. Previously the StreamMessage came from
@@ -66,88 +50,59 @@ impl Handler<DataMessage> for StreamSession {
         log::debug!("sending data to client browser");
         let sender_id = msg.0;
         let image_data = msg.1;
-        let base64_encoded = base64::encode(&image_data);
-        let frame = DataFrame::new(VIDEO_FRAME_TYPE, sender_id, base64_encoded);
-        let text = serde_json::to_string(&frame).unwrap();
-        ctx.text(text) // this is the actual websocket object
+        let image_data_b64 = base64::encode(&image_data);
+        let outbound_msg = ClientMessage::new(IMAGE_READY_TYPE, sender_id, image_data_b64);
+        let outbound_msg_txt = serde_json::to_string(&outbound_msg).unwrap();
+        ctx.text(outbound_msg_txt) // this is the actual websocket object
     }
 }
 
-fn jpeg_to_data_url(jpeg_bytes: Vec<u8>) -> String {
-    let base64_encoded = base64::encode(&jpeg_bytes);
-    format!("data:image/jpeg;base64,{}", base64_encoded)
-}
-
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for VideoSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Binary(_msg)) => {
-                log::warn!("[StreamSession] stream message binary");
+                // it's possible that if the image is small enough that 
+                // this will call instead of the Continuation block below
+                log::warn!("received binary message - currently not supported");
             },
             Ok(ws::Message::Text(msg)) => {
-                log::debug!("received text message {}", msg);
-                let recipient = ctx.address().recipient();
-                let result: Result<DataFrame, serde_json::Error> = serde_json::from_str(&msg);
-                match result {
-                    Ok(frame) => {
-                        let stream_type = frame.stream_type();
-                        if stream_type == CONN_STREAM_FRAME_TYPE {
-                            let stream_id = frame.sender_id();
-                            log::info!("received connection from streamer, streamer id is {}", stream_id);
-                            let add_streamer = AddStreamer(stream_id, recipient);
-                            if let Err(err) = self.server.try_send(add_streamer) {
-                                log::error!("[StreamSession] stream message text error {}", err);
-                            }
-                        } else if stream_type == CONN_DEVICE_FRAME_TYPE {
-                            // At the moment there is no need to keep track of devices
-                            // connected, but a helpful log is at least a good idea
-                            let device_id = frame.sender_id();
-                            log::info!("received connection from device, id is {}", device_id);
-                            // no need for message sending (for now)
-                        } else {
-                            log::warn!("unknown stream type {}", stream_type);
-                        }
+                if log::log_enabled!(log::Level::Debug) {
+                    log::debug!("received text message {}", msg);
+                }
+                match serde_json::from_str(&msg) {
+                    Ok(client_msg) => {
+                        self.handle_text_message(&client_msg, ctx);
                     },
                     Err(err) => {
-                        log::error!("stream message text error {}", err);
+                        log::warn!("not a valid client message: err is {} - msg is {}", err, msg);
                     }
                 }
             },
             Ok(ws::Message::Ping(msg)) => {
+                log::info!("received ping message");
                 ctx.pong(&msg);
             },
             Ok(ws::Message::Close(_msg)) => {
-                log::info!("stream message close");
+                log::info!("client closed the session");
             },
             Ok(ws::Message::Continuation(item)) => {
+                // we must manually handle websocket continuations if the data is larger than
+                // the max frame size - which seems be around 64KB
+                log::trace!("message continuation");
                 match item {
                     Item::FirstBinary(bytes) | Item::FirstText(bytes) => {
-                        self.buffer.extend_from_slice(&bytes);
-                        self.is_fragmented = true;
+                        self.begin_continuation(&bytes);
                     }
                     Item::Continue(bytes) => {
-                        if self.is_fragmented {
-                            self.buffer.extend_from_slice(&bytes);
-                        }
+                        self.continue_continuation(&bytes);
                     }
                     Item::Last(bytes) => {
-                        if self.is_fragmented {
-                            self.buffer.extend_from_slice(&bytes);
-                            self.is_fragmented = false;
-                            let mut image_data = self.buffer.split_off(0);
-                            let sender_id_bytes = image_data.iter().rev().take(7).cloned().collect::<Vec<u8>>();
-                            let sender_id = bytes_to_integer(&sender_id_bytes);
-                            image_data.truncate(image_data.len() - 7);
-                            log::debug!("Sender ID: {:?}, Image data length: {}", sender_id, image_data.len());
-                            let data_msg = DataMessage(sender_id, image_data);
-                            self.server.do_send(data_msg);
-                        }
+                        self.end_continuation(&bytes);                    
                     }
                 }
-                log::debug!("stream message continuation");
             },
             Err(err) => {
-                log::error!("Protocol Error: {:?} - {}", err, err.to_string());
+                log::error!("protocol error: {:?} - {}", err, err.to_string());
             }
             _ => {
                 log::warn!("stream message unknown");
@@ -155,49 +110,67 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for StreamSession {
         }
     }
 }
-fn bytes_to_integer(bytes: &[u8]) -> u64 {
-    let s = bytes.iter().map(|&b| (b + b'0') as char).rev().collect::<String>();
-    s.parse::<u64>().unwrap()
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_bytes_to_integer_single_digit() {
-        let bytes = vec![5];
-        assert_eq!(bytes_to_integer(&bytes), 5);
+impl VideoSession {
+    fn add_monitor_client(&self, monitor_client: Recipient<ImageReadyEvent>, monitor_client_id: u64) {
+        log::info!("adding new monitor client, id = {}", monitor_client_id);
+        let add_mtr_evt = AddMonitorClientEvent(monitor_client_id, monitor_client);
+        if let Err(err) = self.server.try_send(add_mtr_evt) {
+            log::error!("error in sending message for adding new monitor client {}", err);
+        }
     }
 
-    #[test]
-    fn test_bytes_to_integer_multiple_digits() {
-        let bytes = vec![1, 2, 3, 4, 5];
-        assert_eq!(bytes_to_integer(&bytes), 12345);
+    fn handle_text_message(&self, msg: &ClientMessage, ctx: &mut <VideoSession as actix::Actor>::Context) {
+        // recipient is a 'handle' to the websocket session for monitor clients
+        // NOTE this is not a handle for the device clients. 
+        let recipient = ctx.address().recipient();
+        let sender_id = msg.sender_id();
+        let connection_type = msg.connection_type();
+        if connection_type == MONITOR_CONNECTION_TYPE {
+            // we want to maintain a list of monitor clients so we can 
+            // broadcast the data from the devices to them
+            self.add_monitor_client(recipient, sender_id);
+        } else if connection_type == DEVICE_CONNECTION_TYPE {
+            // At the moment there is no need to keep track of devices
+            // connected, but a helpful log is at least a good idea
+            log::info!("received connection from device, id is {}", sender_id);
+        } else {
+            log::warn!("unknown stream type {}", connection_type);
+        }
     }
 
-    #[test]
-    fn test_bytes_to_integer_zero() {
-        let bytes = vec![0];
-        assert_eq!(bytes_to_integer(&bytes), 0);
+    fn begin_continuation(&mut self, data: &Bytes) {
+        self.buffer.extend_from_slice(data);
+        self.is_message_fragmented = true;
     }
 
-    #[test]
-    fn test_bytes_to_integer_large_number() {
-        let bytes = vec![9, 9, 9, 9, 9, 9, 9, 9, 9];
-        assert_eq!(bytes_to_integer(&bytes), 999999999);
+    fn continue_continuation(&mut self, data: &Bytes) {
+        if self.is_message_fragmented {
+            self.buffer.extend_from_slice(data);
+        }
     }
 
-    #[test]
-    #[should_panic(expected = "ParseIntError")]
-    fn test_bytes_to_integer_invalid_input() {
-        let bytes = vec![255]; // This will result in an invalid character
-        bytes_to_integer(&bytes);
-    }
-
-    #[test]
-    fn test_bytes_to_integer_empty_input() {
-        let bytes: Vec<u8> = vec![];
-        assert_eq!(bytes_to_integer(&bytes), 0);
+    fn end_continuation(&mut self, data: &Bytes) {
+        if self.is_message_fragmented {
+            self.is_message_fragmented = false;
+            self.buffer.extend_from_slice(data);
+        
+            let mut image_data = self.buffer.split_off(0);
+            
+            if let Some(sender_id) = images::app::extract_sender_id(&image_data) {
+                images::app::remove_sender_id(&mut image_data);
+        
+                log::debug!(
+                    "sender_id: {}, image data length: {}",
+                    sender_id,
+                    image_data.len()
+                );
+            
+                let img_rdy_evt = ImageReadyEvent(sender_id, image_data);
+                if let Err(err) = self.server.try_send(img_rdy_evt) {
+                    log::error!("error in sending image ready event: {}", err.to_string());
+                }
+            }
+        }
     }
 }

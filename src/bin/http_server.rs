@@ -2,15 +2,18 @@
 use actix::{Addr, Actor};
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
-use anzen2::{config, stream_server::StreamServer, stream_session::StreamSession};
+use anzen2::{config, stream_server::StreamServer, stream_session::VideoSession};
 
 use std::fs;
 
+const LOCALHOST_BIND_ADDR: &str = "127.0.0.1:8080";
+const EXPOSED_BIND_ADDR: &str = "0.0.0.0:8080";
+const WORKERS_MULTIPLIER: usize = 2;
 const ENV_ALLOWED_CIDR: &str = "ALLOWED_CIDR";
 const ANY_CIDR: &str = "*";
 const CONTENT_TYPE_JS: &str = "application/javascript; charset=utf-8";
 const CONTENT_TYPE_HTML: &str = "text/html; charset=utf-8";
-const PAYLOAD_SIZE : usize = 5 * 1024 * 1024; // payload buffer size
+const PAYLOAD_SIZE : usize = 1024 * 1024; // payload buffer size
 const PROXY_FWD_HEADER: &str = "X-Forwarded-For";
 
 #[actix_web::main]
@@ -19,12 +22,10 @@ async fn main() -> std::io::Result<()> {
     log::info!("starting server...");
 
     let stream_server = StreamServer::new().start();
-    
-    let workers_ct = num_cpus::get();
-    
-    let mut bind_addr = "127.0.0.1:8080".to_string();
+    let workers_ct = num_cpus::get() * WORKERS_MULTIPLIER;
+    let mut bind_addr = LOCALHOST_BIND_ADDR.to_string();
     if !config::bind_localhost_addr() {
-        bind_addr = "0.0.0.0:8080".to_string();
+        bind_addr = EXPOSED_BIND_ADDR.to_string();
     }
 
     HttpServer::new(move || {
@@ -88,7 +89,7 @@ async fn start_monitor_websocket(
         return Ok(HttpResponse::Forbidden().body("forbidden"));
     }
 
-    let stream_session = StreamSession::new(srv.get_ref().clone());
+    let stream_session = VideoSession::new(srv.get_ref().clone());
     log::info!(
         "starting websocket connection: {} {} from {}",
         req.method(),

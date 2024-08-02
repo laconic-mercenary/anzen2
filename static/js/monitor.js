@@ -1,6 +1,6 @@
 
 const streamerId = Math.floor(Math.random() * 1000000);
-const connectionStreamType = 129;
+const connectionMonitorType = 129; // this must align with what the server expects
 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
 const reconnectIntervalMs = 30 * 1000;
 const senderIdRegex = /^[\w-]{1,50}$/;
@@ -67,7 +67,7 @@ function socketOnOpen() {
     clearInterval(connectSocketInterval);
     const connect = {
         sender_id: streamerId,
-        stream_type: connectionStreamType,
+        connection_type: connectionMonitorType,
         data: "connectStream"
     };
     socket.send(JSON.stringify(connect));

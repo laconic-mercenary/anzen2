@@ -1,5 +1,5 @@
 pub mod config;
-pub mod message_types;
+pub mod client_message;
 pub mod stream_server;
 pub mod stream_session;
 pub mod time;
