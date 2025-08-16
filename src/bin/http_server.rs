@@ -33,8 +33,10 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(stream_server.clone()))
             .service(web::resource("/device").route(web::get().to(get_device_page)))
             .service(web::resource("/monitor").route(web::get().to(get_monitor_page)))
+            .service(web::resource("/mtx-monitor").route(web::get().to(get_mtx_monitor_page)))
             .service(web::resource("/js/monitor.js").route(web::get().to(get_monitor_js)))
             .service(web::resource("/js/device.js").route(web::get().to(get_device_js)))
+            .service(web::resource("/js/mtx-monitor.js").route(web::get().to(get_mtx_monitor_js)))
             .route("/ws/", web::get().to(start_monitor_websocket))
     })
     .bind(bind_addr)?
@@ -69,6 +71,25 @@ async fn get_device_page() -> HttpResponse {
     HttpResponse::Ok()
         .content_type(CONTENT_TYPE_HTML)
         .body(html)
+}
+
+async fn get_mtx_monitor_page() -> HttpResponse {
+    log::trace!("get_mtx_monitor_page");
+    let html = fs::read_to_string("static/mtx-monitor.html").unwrap();
+    HttpResponse::Ok()
+        .content_type(CONTENT_TYPE_HTML)
+        .body(html)
+}
+
+async fn get_mtx_monitor_js() -> HttpResponse {
+    log::trace!("get_mtx_monitor_js");
+    match fs::read_to_string("static/js/mtx-monitor.js") {
+        Ok(js) => HttpResponse::Ok().content_type(CONTENT_TYPE_JS).body(js),
+        Err(e) => {
+            log::error!("Failed to read mtx-monitor.js: {}", e);
+            HttpResponse::NotFound().body("mtx-monitor.js not found")
+        }
+    }
 }
  
 async fn start_monitor_websocket(
